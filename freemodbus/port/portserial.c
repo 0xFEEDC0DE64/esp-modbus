@@ -33,8 +33,6 @@
  *
  * File: $Id: portother.c,v 1.1 2010/06/06 13:07:20 wolti Exp $
  */
-
-#include "driver/uart.h"
 #include "port.h"
 #include "driver/uart.h"
 #include "freertos/queue.h" // for queue support
@@ -87,14 +85,15 @@ static USHORT usMBPortSerialRxPoll(size_t xEventSize)
 
     if (bRxStateEnabled) {
         // Get received packet into Rx buffer
-        while(xReadStatus && (usCnt++ <= xEventSize)) {
+        while(xReadStatus && (usCnt++ <= MB_SERIAL_BUF_SIZE)) {
             // Call the Modbus stack callback function and let it fill the buffers.
             xReadStatus = pxMBFrameCBByteReceived(); // callback to execute receive FSM
         }
         uart_flush_input(ucUartNumber);
         // Send event EV_FRAME_RECEIVED to allow stack process packet
 #if !CONFIG_FMB_TIMER_PORT_ENABLED
-        pxMBPortCBTimerExpired();
+        // Let the stack know that T3.5 time is expired and data is received
+        (void)pxMBPortCBTimerExpired(); // calls callback xMBRTUTimerT35Expired();
 #endif
         ESP_LOGD(TAG, "RX: %d bytes\n", usCnt);
     }
@@ -127,7 +126,7 @@ static void vUartTask(void *pvParameters)
     uart_event_t xEvent;
     USHORT usResult = 0;
     for(;;) {
-        if (xMBPortSerialWaitEvent(xMbUartQueue, (void*)&xEvent, portMAX_DELAY)) {
+        if (xQueueReceive(xMbUartQueue, (void*)&xEvent, portMAX_DELAY) == pdTRUE) {
             ESP_LOGD(TAG, "MB_uart[%d] event:", ucUartNumber);
             switch(xEvent.type) {
                 //Event of UART receving data
@@ -136,8 +135,6 @@ static void vUartTask(void *pvParameters)
                     // This flag set in the event means that no more
                     // data received during configured timeout and UART TOUT feature is triggered
                     if (xEvent.timeout_flag) {
-                        // Get buffered data length
-                        ESP_ERROR_CHECK(uart_get_buffered_data_len(ucUartNumber, &xEvent.size));
                         // Read received data and send it to modbus stack
                         usResult = usMBPortSerialRxPoll(xEvent.size);
                         ESP_LOGD(TAG,"Timeout occured, processed: %d bytes", usResult);
@@ -222,7 +219,7 @@ BOOL xMBPortSerialInit(UCHAR ucPORT, ULONG ulBaudRate,
         .stop_bits = UART_STOP_BITS_1,
         .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
         .rx_flow_ctrl_thresh = 2,
-        .source_clk = UART_SCLK_APB
+        .source_clk = UART_SCLK_APB,
     };
     // Set UART config
     xErr = uart_param_config(ucUartNumber, &xUartConfig);
@@ -257,17 +254,6 @@ BOOL xMBPortSerialInit(UCHAR ucPORT, ULONG ulBaudRate,
     } else {
         vTaskSuspend(xMbTaskHandle); // Suspend serial task while stack is not started
     }
-    return TRUE;
-}
-
-BOOL xMBSerialPortGetRequest( UCHAR **ppucMBSerialFrame, USHORT * usSerialLength )
-{
-    BOOL eStatus = TRUE;
-    return eStatus;
-}
-
-BOOL xMBSerialPortSendResponse( UCHAR *pucMBSerialFrame, USHORT usSerialLength )
-{
     return TRUE;
 }
 

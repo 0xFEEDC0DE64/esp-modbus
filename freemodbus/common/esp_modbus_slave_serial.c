@@ -13,7 +13,7 @@
 /**
  * Initialization of Modbus Serial slave controller
  */
-esp_err_t mbc_slave_init(mb_port_type_t port_type, void** handler)
+esp_err_t mbc_slave_init(mb_port_type_t port_type, mb_slave_interface_t **handler, bool start_controller_task)
 {
     void* port_handler = NULL;
     esp_err_t error = ESP_ERR_NOT_SUPPORTED;
@@ -21,13 +21,13 @@ esp_err_t mbc_slave_init(mb_port_type_t port_type, void** handler)
     {
         case MB_PORT_SERIAL_SLAVE:
             // Call constructor function of actual port implementation
-            error = mbc_serial_slave_create(&port_handler);
+            error = mbc_serial_slave_create(&port_handler, start_controller_task);
             break;
         default:
             return ESP_ERR_NOT_SUPPORTED;
     }
     if ((port_handler != NULL) && (error == ESP_OK)) {
-        mbc_slave_init_iface(port_handler);
+        mbc_slave_init_iface((mb_slave_interface_t*)port_handler);
         *handler = port_handler;
     }
     return error;

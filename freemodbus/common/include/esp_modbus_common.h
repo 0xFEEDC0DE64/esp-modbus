@@ -15,7 +15,6 @@ extern "C" {
 
 #if __has_include("esp_check.h")
 #include "esp_check.h"
-#include "esp_log.h"
 
 #define MB_RETURN_ON_FALSE(a, err_code, tag, format, ...) ESP_RETURN_ON_FALSE(a, err_code, tag, format __VA_OPT__(,) __VA_ARGS__)
 
@@ -25,7 +24,7 @@ extern "C" {
 
 #define MB_RETURN_ON_FALSE(a, err_code, tag, format, ...) do {                                         \
         if (!(a)) {                                                                              \
-            ESP_LOGE(tag, "%s(%d): " format, __FUNCTION__, __LINE__ __VA_OPT__(,) __VA_ARGS__);        \
+            MB_LOGE(tag, "%s(%d): " format, __FUNCTION__, __LINE__ __VA_OPT__(,) __VA_ARGS__);        \
             return err_code;                                                                               \
         }                                                                                                  \
 } while(0)
@@ -36,10 +35,10 @@ extern "C" {
 #define MB_CONTROLLER_PRIORITY              (CONFIG_FMB_PORT_TASK_PRIO - 1)    // priority of MB controller task
 
 // Default port defines
-#define MB_DEVICE_ADDRESS   (1)                 // Default slave device address in Modbus
-#define MB_DEVICE_SPEED     (115200)            // Default Modbus speed for now hard defined
+#define MB_DEVICE_ADDRESS   (1)             // Default slave device address in Modbus
+#define MB_DEVICE_SPEED     (115200)        // Default Modbus speed for now hard defined
 #define MB_UART_PORT        (UART_NUM_MAX - 1)  // Default UART port number
-#define MB_PAR_INFO_TOUT    (10)                // Timeout for get parameter info
+#define MB_PAR_INFO_TOUT    (10)            // Timeout for get parameter info
 #define MB_PARITY_NONE      (UART_PARITY_DISABLE)
 
 // The Macros below handle the endianness while transfer N byte data into buffer
@@ -153,7 +152,7 @@ typedef union {
 /**
  * common interface method types
  */
-typedef esp_err_t (*iface_init)(void**);        /*!< Interface method init */
+typedef esp_err_t (*iface_init)(void**,bool);   /*!< Interface method init */
 typedef esp_err_t (*iface_destroy)(void);       /*!< Interface method destroy */
 typedef esp_err_t (*iface_setup)(void*);        /*!< Interface method setup */
 typedef esp_err_t (*iface_start)(void);         /*!< Interface method start */

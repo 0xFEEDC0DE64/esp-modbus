@@ -10,10 +10,11 @@
 // Public interface header for slave
 #include <stdint.h>                 // for standard int types definition
 #include <stddef.h>                 // for NULL and std defines
-#include "soc/soc.h"                // for BITN definitions
 #include "freertos/FreeRTOS.h"      // for task creation and queues access
 #include "freertos/event_groups.h"  // for event groups
 #include "esp_modbus_common.h"      // for common types
+#include "mb.h"
+#include "mbc_slave.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -26,27 +27,6 @@ extern "C" {
     } while (0)
 
 /**
- * @brief Parameter access event information type
- */
-typedef struct {
-    uint32_t time_stamp;                    /*!< Timestamp of Modbus Event (uS)*/
-    uint16_t mb_offset;                     /*!< Modbus register offset */
-    mb_event_group_t type;                  /*!< Modbus event type */
-    uint8_t* address;                       /*!< Modbus data storage address */
-    size_t size;                            /*!< Modbus event register size (number of registers)*/
-} mb_param_info_t;
-
-/**
- * @brief Parameter storage area descriptor
- */
-typedef struct {
-    uint16_t start_offset;                  /*!< Modbus start address for area descriptor */
-    mb_param_type_t type;                   /*!< Type of storage area descriptor */
-    void* address;                          /*!< Instance address for storage area descriptor */
-    size_t size;                            /*!< Instance size for area descriptor (bytes) */
-} mb_register_area_descriptor_t;
-
-/**
  * @brief Initialize Modbus Slave controller and stack for TCP port
  *
  * @param[out] handler handler(pointer) to master data structure
@@ -56,7 +36,7 @@ typedef struct {
  *     - ESP_ERR_NOT_SUPPORTED  Port type not supported
  *     - ESP_ERR_INVALID_STATE  Initialization failure
  */
-esp_err_t mbc_slave_init_tcp(void** handler);
+esp_err_t mbc_slave_init_tcp(mb_slave_interface_t** handler, bool start_controller_task);
 
 /**
  * @brief Initialize Modbus Slave controller and stack for Serial port
@@ -69,14 +49,14 @@ esp_err_t mbc_slave_init_tcp(void** handler);
  *     - ESP_ERR_NOT_SUPPORTED  Port type not supported
  *     - ESP_ERR_INVALID_STATE  Initialization failure
  */
-esp_err_t mbc_slave_init(mb_port_type_t port_type, void** handler);
+esp_err_t mbc_slave_init(mb_port_type_t port_type, mb_slave_interface_t **handler, bool start_controller_task);
 
 /**
  * @brief Initialize Modbus Slave controller interface handle
  *
  * @param[in] handler - pointer to slave interface data structure
  */
-void mbc_slave_init_iface(void* handler);
+void mbc_slave_init_iface(mb_slave_interface_t* handler);
 
 /**
  * @brief Destroy Modbus controller and stack
@@ -141,6 +121,15 @@ esp_err_t mbc_slave_get_param_info(mb_param_info_t* reg_info, uint32_t timeout);
  */
 esp_err_t mbc_slave_set_descriptor(mb_register_area_descriptor_t descr_data);
 
+// Callback function for reading of MB Discrete Input Registers
+eMBErrorCode mbc_reg_discrete_slave_cb(UCHAR* reg_buffer, USHORT address, USHORT n_discrete);
+// Callback function for reading of MB Coils Registers
+eMBErrorCode mbc_reg_coils_slave_cb(UCHAR* reg_buffer, USHORT address, USHORT n_coils, eMBRegisterMode mode);
+// Callback function for reading of MB Holding Registers
+// Executed by stack when request to read/write holding registers is received
+eMBErrorCode mbc_reg_holding_slave_cb(UCHAR * reg_buffer, USHORT address, USHORT n_regs, eMBRegisterMode mode);
+// Callback function for reading of MB Input Registers
+eMBErrorCode mbc_reg_input_slave_cb(UCHAR * reg_buffer, USHORT address, USHORT n_regs);
 #ifdef __cplusplus
 }
 #endif

@@ -112,7 +112,7 @@ BOOL            xMBPortEventInit( void );
 
 BOOL            xMBPortEventPost( eMBEventType eEvent );
 
-BOOL            xMBPortEventGet(  /*@out@ */ eMBEventType * eEvent );
+BOOL            xMBPortEventGet(  /*@out@ */ eMBEventType * eEvent, TickType_t xTicksToWait );
 
 #if MB_MASTER_RTU_ENABLED || MB_MASTER_ASCII_ENABLED || MB_MASTER_TCP_ENABLED
 BOOL            xMBMasterPortEventInit( void );
@@ -145,10 +145,6 @@ BOOL            xMBPortSerialGetByte( CHAR * pucByte );
 
 BOOL            xMBPortSerialPutByte( CHAR ucByte );
 
-BOOL            xMBSerialPortGetRequest( UCHAR **ppucMBSerialFrame, USHORT * pusSerialLength ) __attribute__ ((weak));
-
-BOOL            xMBSerialPortSendResponse( UCHAR *pucMBSerialFrame, USHORT usSerialLength ) __attribute__ ((weak));
-
 #if MB_MASTER_RTU_ENABLED || MB_MASTER_ASCII_ENABLED
 BOOL            xMBMasterPortSerialInit( UCHAR ucPort, ULONG ulBaudRate,
                                    UCHAR ucDataBits, eMBParity eParity );
@@ -162,11 +158,6 @@ void            vMBMasterPortSerialEnable( BOOL xRxEnable, BOOL xTxEnable );
 BOOL            xMBMasterPortSerialGetByte( CHAR * pucByte );
 
 BOOL            xMBMasterPortSerialPutByte( CHAR ucByte );
-
-BOOL            xMBMasterSerialPortGetResponse( UCHAR **ppucMBSerialFrame, USHORT * usSerialLength );
-
-BOOL            xMBMasterSerialPortSendRequest( UCHAR *pucMBSerialFrame, USHORT usSerialLength );
-
 #endif
 
 /* ----------------------- Timers functions ---------------------------------*/

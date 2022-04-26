@@ -161,34 +161,26 @@ eMBErrorCode
 eMBMasterRTUReceive( UCHAR * pucRcvAddress, UCHAR ** pucFrame, USHORT * pusLength )
 {
     eMBErrorCode    eStatus = MB_ENOERR;
-    UCHAR          *pucMBRTUFrame = ( UCHAR* ) ucMasterRTURcvBuf;
-    USHORT          usFrameLength = usMasterRcvBufferPos;
-
-    if( xMBMasterSerialPortGetResponse( &pucMBRTUFrame, &usFrameLength ) == FALSE )
-    {
-        return MB_EIO;
-    }
 
     ENTER_CRITICAL_SECTION(  );
-    assert( usFrameLength < MB_SER_PDU_SIZE_MAX );
-    assert( pucMBRTUFrame );
+    assert( usMasterRcvBufferPos < MB_SER_PDU_SIZE_MAX );
 
     /* Length and CRC check */
-    if( ( usFrameLength >= MB_RTU_SER_PDU_SIZE_MIN )
-        && ( usMBCRC16( ( UCHAR * ) pucMBRTUFrame, usFrameLength ) == 0 ) )
+    if( ( usMasterRcvBufferPos >= MB_RTU_SER_PDU_SIZE_MIN )
+        && ( usMBCRC16( ( UCHAR * ) ucMasterRTURcvBuf, usMasterRcvBufferPos ) == 0 ) )
     {
-        /* Save the address field. All frames are passed to the upper layer
+        /* Save the address field. All frames are passed to the upper layed
          * and the decision if a frame is used is done there.
          */
-        *pucRcvAddress = pucMBRTUFrame[MB_SER_PDU_ADDR_OFF];
+        *pucRcvAddress = ucMasterRTURcvBuf[MB_SER_PDU_ADDR_OFF];
 
         /* Total length of Modbus-PDU is Modbus-Serial-Line-PDU minus
          * size of address field and CRC checksum.
          */
-        *pusLength = ( USHORT )( usFrameLength - MB_SER_PDU_PDU_OFF - MB_SER_PDU_SIZE_CRC );
+        *pusLength = ( USHORT )( usMasterRcvBufferPos - MB_SER_PDU_PDU_OFF - MB_SER_PDU_SIZE_CRC );
 
         /* Return the start of the Modbus PDU to the caller. */
-        *pucFrame = ( UCHAR * ) & pucMBRTUFrame[MB_SER_PDU_PDU_OFF];
+        *pucFrame = ( UCHAR * ) & ucMasterRTURcvBuf[MB_SER_PDU_PDU_OFF];
     }
     else
     {
@@ -207,13 +199,14 @@ eMBMasterRTUSend( UCHAR ucSlaveAddress, const UCHAR * pucFrame, USHORT usLength 
 
     if ( ucSlaveAddress > MB_MASTER_TOTAL_SLAVE_NUM ) return MB_EINVAL;
 
+    ENTER_CRITICAL_SECTION(  );
+
     /* Check if the receiver is still in idle state. If not we where to
      * slow with processing the received frame and the master sent another
      * frame on the network. We have to abort sending the frame.
      */
     if( eRcvState == STATE_M_RX_IDLE )
     {
-        ENTER_CRITICAL_SECTION(  );
         /* First byte before the Modbus-PDU is the slave address. */
         pucMasterSndBufferCur = ( UCHAR * ) pucFrame - 1;
         usMasterSndBufferCount = 1;
@@ -224,18 +217,11 @@ eMBMasterRTUSend( UCHAR ucSlaveAddress, const UCHAR * pucFrame, USHORT usLength 
 
         /* Calculate CRC16 checksum for Modbus-Serial-Line-PDU. */
         usCRC16 = usMBCRC16( ( UCHAR * ) pucMasterSndBufferCur, usMasterSndBufferCount );
-        pucMasterSndBufferCur[usMasterSndBufferCount++] = ( UCHAR )( usCRC16 & 0xFF );
-        pucMasterSndBufferCur[usMasterSndBufferCount++] = ( UCHAR )( usCRC16 >> 8 );
-        EXIT_CRITICAL_SECTION(  );
+        ucMasterRTUSndBuf[usMasterSndBufferCount++] = ( UCHAR )( usCRC16 & 0xFF );
+        ucMasterRTUSndBuf[usMasterSndBufferCount++] = ( UCHAR )( usCRC16 >> 8 );
 
         /* Activate the transmitter. */
         eSndState = STATE_M_TX_XMIT;
-        
-        if ( xMBMasterSerialPortSendRequest( ( UCHAR * ) pucMasterSndBufferCur, usMasterSndBufferCount ) == FALSE )
-        {
-            eStatus = MB_EIO;
-        }
-        
         // The place to enable RS485 driver
         vMBMasterPortSerialEnable( FALSE, TRUE );
     }
@@ -243,6 +229,7 @@ eMBMasterRTUSend( UCHAR ucSlaveAddress, const UCHAR * pucFrame, USHORT usLength 
     {
         eStatus = MB_EIO;
     }
+    EXIT_CRITICAL_SECTION(  );
     return eStatus;
 }
 
@@ -286,15 +273,11 @@ xMBMasterRTUReceiveFSM( void )
         eSndState = STATE_M_TX_IDLE;
 
         usMasterRcvBufferPos = 0;
-        if( xStatus && ucByte ) {
-            ucMasterRTURcvBuf[usMasterRcvBufferPos++] = ucByte;
-            eRcvState = STATE_M_RX_RCV;
-        }
+        ucMasterRTURcvBuf[usMasterRcvBufferPos++] = ucByte;
+        eRcvState = STATE_M_RX_RCV;
 
         /* Enable t3.5 timers. */
-#if CONFIG_FMB_TIMER_PORT_ENABLED
         vMBMasterPortTimersT35Enable( );
-#endif
         break;
 
         /* We are currently receiving a frame. Reset the timer after
@@ -313,9 +296,7 @@ xMBMasterRTUReceiveFSM( void )
         {
             eRcvState = STATE_M_RX_ERROR;
         }
-#if CONFIG_FMB_TIMER_PORT_ENABLED
         vMBMasterPortTimersT35Enable( );
-#endif
         break;
     }
     return xStatus;

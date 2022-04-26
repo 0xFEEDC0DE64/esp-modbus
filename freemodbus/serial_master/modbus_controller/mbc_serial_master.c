@@ -30,7 +30,7 @@ extern BOOL xMBMasterPortSerialTxPoll(void);
 #define MB_RESPONSE_TICS pdMS_TO_TICKS(CONFIG_FMB_MASTER_TIMEOUT_MS_RESPOND + 10)
 
 
-static mb_master_interface_t* mbm_interface_ptr = NULL;
+static mb_master_interface_t* mbm_interface_ptr = NULL; //&default_interface_inst;
 static const char *TAG = "MB_CONTROLLER_MASTER";
 
 // Modbus event processing task
@@ -101,7 +101,7 @@ static esp_err_t mbc_serial_master_start(void)
             "mb stack initialization failure, eMBInit() returns (0x%x).", status);
     status = eMBMasterEnable();
     MB_MASTER_CHECK((status == MB_ENOERR), ESP_ERR_INVALID_STATE,
-            "mb stack set slave ID failure, eMBMasterEnable() returned (0x%x).", (uint32_t)status);
+            "mb stack set slave ID failure, eMBEnable() returned (0x%x).", (uint32_t)status);
     // Set the mbcontroller start flag
     EventBits_t flag = xEventGroupSetBits(mbm_opts->mbm_event_group,
                                             (EventBits_t)MB_EVENT_STACK_STARTED);
@@ -639,7 +639,7 @@ eMBErrorCode eMBRegDiscreteCBSerialMaster(UCHAR * pucRegBuffer, USHORT usAddress
 }
 
 // Initialization of resources for Modbus serial master controller
-esp_err_t mbc_serial_master_create(void** handler)
+esp_err_t mbc_serial_master_create(void** handler, bool start_controller_task)
 {
     // Allocate space for master interface structure
     if (mbm_interface_ptr == NULL) {
@@ -664,21 +664,26 @@ esp_err_t mbc_serial_master_create(void** handler)
     mbm_opts->mbm_event_group = xEventGroupCreate();
     MB_MASTER_CHECK((mbm_opts->mbm_event_group != NULL),
                         ESP_ERR_NO_MEM, "mb event group error.");
-    // Create modbus controller task
-    status = xTaskCreatePinnedToCore((void*)&modbus_master_task,
-                            "modbus_matask",
-                            MB_CONTROLLER_STACK_SIZE,
-                            NULL,                       // No parameters
-                            MB_CONTROLLER_PRIORITY,
-                            &mbm_opts->mbm_task_handle,
-                            MB_PORT_TASK_AFFINITY);
-    if (status != pdPASS) {
-        vTaskDelete(mbm_opts->mbm_task_handle);
-        MB_MASTER_CHECK((status == pdPASS), ESP_ERR_NO_MEM,
-                "mb controller task creation error, xTaskCreate() returns (0x%x).",
-                (uint32_t)status);
+    if (start_controller_task)
+    {
+        // Create modbus controller task
+        status = xTaskCreatePinnedToCore((void*)&modbus_master_task,
+                                "modbus_matask",
+                                MB_CONTROLLER_STACK_SIZE,
+                                NULL,                       // No parameters
+                                MB_CONTROLLER_PRIORITY,
+                                &mbm_opts->mbm_task_handle,
+                                MB_PORT_TASK_AFFINITY);
+        if (status != pdPASS) {
+            vTaskDelete(mbm_opts->mbm_task_handle);
+            MB_MASTER_CHECK((status == pdPASS), ESP_ERR_NO_MEM,
+                    "mb controller task creation error, xTaskCreate() returns (0x%x).",
+                    (uint32_t)status);
+            MB_MASTER_ASSERT(mbm_opts->mbm_task_handle != NULL); // The task is created but handle is incorrect
+        }
     }
-    MB_MASTER_ASSERT(mbm_opts->mbm_task_handle != NULL); // The task is created but handle is incorrect
+    else
+        mbm_opts->mbm_task_handle = NULL;
 
     // Initialize public interface methods of the interface
     mbm_interface_ptr->init = mbc_serial_master_create;

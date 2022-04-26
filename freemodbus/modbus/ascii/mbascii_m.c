@@ -154,34 +154,29 @@ eMBErrorCode
 eMBMasterASCIIReceive( UCHAR * pucRcvAddress, UCHAR ** pucFrame, USHORT * pusLength )
 {
     eMBErrorCode    eStatus = MB_ENOERR;
-    UCHAR          *pucMBASCIIFrame = ( UCHAR* ) ucMasterASCIIRcvBuf;
-    USHORT          usFrameLength = usMasterRcvBufferPos;
 
-    if( xMBMasterSerialPortGetResponse( &pucMBASCIIFrame, &usFrameLength ) == FALSE )
-    {
-        return MB_EIO;
-    }
     ENTER_CRITICAL_SECTION(  );
-    assert( usFrameLength < MB_SER_PDU_SIZE_MAX );
+    assert( usMasterRcvBufferPos < MB_SER_PDU_SIZE_MAX );
 
-    assert( pucMBASCIIFrame );
     /* Length and CRC check */
-    if( ( usFrameLength >= MB_ASCII_SER_PDU_SIZE_MIN )
-            && ( prvucMBLRC( ( UCHAR * ) pucMBASCIIFrame, usFrameLength ) == 0 ) )
+    if( ( usMasterRcvBufferPos >= MB_ASCII_SER_PDU_SIZE_MIN )
+        && ( prvucMBLRC( ( UCHAR * ) ucMasterASCIIRcvBuf, usMasterRcvBufferPos ) == 0 ) )
     {
         /* Save the address field. All frames are passed to the upper layed
-        * and the decision if a frame is used is done there.
-        */
-       *pucRcvAddress = pucMBASCIIFrame[MB_SER_PDU_ADDR_OFF];
+         * and the decision if a frame is used is done there.
+         */
+        *pucRcvAddress = ucMasterASCIIRcvBuf[MB_SER_PDU_ADDR_OFF];
 
-       /* Total length of Modbus-PDU is Modbus-Serial-Line-PDU minus
-        * size of address field and CRC checksum.
-        */
-       *pusLength = ( USHORT )( usFrameLength - MB_SER_PDU_PDU_OFF - MB_SER_PDU_SIZE_LRC );
+        /* Total length of Modbus-PDU is Modbus-Serial-Line-PDU minus
+         * size of address field and CRC checksum.
+         */
+        *pusLength = ( USHORT )( usMasterRcvBufferPos - MB_SER_PDU_PDU_OFF - MB_SER_PDU_SIZE_LRC );
 
-       /* Return the start of the Modbus PDU to the caller. */
-       *pucFrame = ( UCHAR * ) & pucMBASCIIFrame[MB_SER_PDU_PDU_OFF];
-   } else {
+        /* Return the start of the Modbus PDU to the caller. */
+        *pucFrame = ( UCHAR * ) & ucMasterASCIIRcvBuf[MB_SER_PDU_PDU_OFF];
+    }
+    else
+    {
         eStatus = MB_EIO;
     }
     EXIT_CRITICAL_SECTION(  );
@@ -196,13 +191,13 @@ eMBMasterASCIISend( UCHAR ucSlaveAddress, const UCHAR * pucFrame, USHORT usLengt
 
     if ( ucSlaveAddress > MB_MASTER_TOTAL_SLAVE_NUM ) return MB_EINVAL;
 
+    ENTER_CRITICAL_SECTION(  );
     /* Check if the receiver is still in idle state. If not we where too
      * slow with processing the received frame and the master sent another
      * frame on the network. We have to abort sending the frame.
      */
     if(eRcvState == STATE_M_RX_IDLE)
     {
-        ENTER_CRITICAL_SECTION(  );
         /* First byte before the Modbus-PDU is the slave address. */
         pucMasterSndBufferCur = ( UCHAR * ) pucFrame - 1;
         usMasterSndBufferCount = 1;
@@ -213,22 +208,17 @@ eMBMasterASCIISend( UCHAR ucSlaveAddress, const UCHAR * pucFrame, USHORT usLengt
 
         /* Calculate LRC checksum for Modbus-Serial-Line-PDU. */
         usLRC = prvucMBLRC( ( UCHAR * ) pucMasterSndBufferCur, usMasterSndBufferCount );
-        pucMasterSndBufferCur[usMasterSndBufferCount++] = usLRC;
+        ucMasterASCIISndBuf[usMasterSndBufferCount++] = usLRC;
 
         /* Activate the transmitter. */
         eSndState = STATE_M_TX_START;
-        EXIT_CRITICAL_SECTION(  );
-
-        if ( xMBMasterSerialPortSendRequest( ( UCHAR * ) pucMasterSndBufferCur, usMasterSndBufferCount ) == FALSE )
-        {
-            eStatus = MB_EIO;
-        }
         vMBMasterPortSerialEnable( FALSE, TRUE );
     }
     else
     {
         eStatus = MB_EIO;
     }
+    EXIT_CRITICAL_SECTION(  );
     return eStatus;
 }
 
@@ -457,7 +447,7 @@ xMBMasterASCIITransmitFSM( void )
     return xNeedPoll;
 }
 
-BOOL MB_PORT_ISR_ATTR
+BOOL
 xMBMasterASCIITimerT1SExpired( void )
 {
     BOOL xNeedPoll = FALSE;
@@ -467,6 +457,7 @@ xMBMasterASCIITimerT1SExpired( void )
         /* Timer t35 expired. Startup phase is finished. */
     case STATE_M_RX_INIT:
         xNeedPoll = xMBMasterPortEventPost(EV_MASTER_READY);
+        ESP_EARLY_LOGI("xMBMasterASCIITimerT1SExpired", "RX_INIT_EXPIRED");
         break;
 
         /* Start of message is not received during respond timeout.

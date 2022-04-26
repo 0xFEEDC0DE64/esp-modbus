@@ -151,33 +151,26 @@ eMBErrorCode
 eMBASCIIReceive( UCHAR * pucRcvAddress, UCHAR ** pucFrame, USHORT * pusLength )
 {
     eMBErrorCode    eStatus = MB_ENOERR;
-    UCHAR          *pucMBASCIIFrame = ( UCHAR* ) ucASCIIBuf;
-    USHORT          usFrameLength = usRcvBufferPos;
 
-    if( xMBSerialPortGetRequest( &pucMBASCIIFrame, &usFrameLength ) == FALSE )
-    {
-        return MB_EIO;
-    }
-    
     ENTER_CRITICAL_SECTION(  );
-    assert( usFrameLength < MB_SER_PDU_SIZE_MAX );
+    assert( usRcvBufferPos < MB_SER_PDU_SIZE_MAX );
 
     /* Length and CRC check */
-   if( ( usFrameLength >= MB_ASCII_SER_PDU_SIZE_MIN )
-        && ( prvucMBLRC( ( UCHAR * ) pucMBASCIIFrame, usFrameLength ) == 0 ) )
+    if( ( usRcvBufferPos >= MB_ASCII_SER_PDU_SIZE_MIN )
+        && ( prvucMBLRC( ( UCHAR * ) ucASCIIBuf, usRcvBufferPos ) == 0 ) )
     {
         /* Save the address field. All frames are passed to the upper layed
          * and the decision if a frame is used is done there.
          */
-        *pucRcvAddress = pucMBASCIIFrame[MB_SER_PDU_ADDR_OFF];
+        *pucRcvAddress = ucASCIIBuf[MB_SER_PDU_ADDR_OFF];
 
         /* Total length of Modbus-PDU is Modbus-Serial-Line-PDU minus
          * size of address field and CRC checksum.
          */
-        *pusLength = ( USHORT )( usFrameLength - MB_SER_PDU_PDU_OFF - MB_SER_PDU_SIZE_LRC );
+        *pusLength = ( USHORT )( usRcvBufferPos - MB_SER_PDU_PDU_OFF - MB_SER_PDU_SIZE_LRC );
 
         /* Return the start of the Modbus PDU to the caller. */
-        *pucFrame = ( UCHAR * ) & pucMBASCIIFrame[MB_SER_PDU_PDU_OFF];
+        *pucFrame = ( UCHAR * ) & ucASCIIBuf[MB_SER_PDU_PDU_OFF];
     }
     else
     {
@@ -193,14 +186,13 @@ eMBASCIISend( UCHAR ucSlaveAddress, const UCHAR * pucFrame, USHORT usLength )
     eMBErrorCode    eStatus = MB_ENOERR;
     UCHAR           usLRC;
 
-   
+    ENTER_CRITICAL_SECTION(  );
     /* Check if the receiver is still in idle state. If not we where too
      * slow with processing the received frame and the master sent another
      * frame on the network. We have to abort sending the frame.
      */
     if( eRcvState == STATE_RX_IDLE )
     {
-         ENTER_CRITICAL_SECTION(  );
         /* First byte before the Modbus-PDU is the slave address. */
         pucSndBufferCur = ( UCHAR * ) pucFrame - 1;
         usSndBufferCount = 1;
@@ -215,13 +207,6 @@ eMBASCIISend( UCHAR ucSlaveAddress, const UCHAR * pucFrame, USHORT usLength )
 
         /* Activate the transmitter. */
         eSndState = STATE_TX_START;
-        EXIT_CRITICAL_SECTION(  );
-
-        if ( xMBSerialPortSendResponse( ( UCHAR * ) pucSndBufferCur, usSndBufferCount ) == FALSE )
-        {
-            eStatus = MB_EIO;
-        }
-
         vMBPortSerialEnable( FALSE, TRUE );
     }
     else

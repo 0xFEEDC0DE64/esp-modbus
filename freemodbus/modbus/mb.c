@@ -337,7 +337,7 @@ eMBDisable( void )
 }
 
 eMBErrorCode
-eMBPoll( void )
+eMBPoll( TickType_t xTicksToWait )
 {
     static UCHAR    *ucMBFrame = NULL;
     static UCHAR    ucRcvAddress;
@@ -357,7 +357,7 @@ eMBPoll( void )
 
     /* Check if there is a event available. If not return control to caller.
      * Otherwise we will handle the event. */
-    if( xMBPortEventGet( &eEvent ) == TRUE )
+    if( xMBPortEventGet( &eEvent, xTicksToWait ) == TRUE )
     {
         switch ( eEvent )
         {

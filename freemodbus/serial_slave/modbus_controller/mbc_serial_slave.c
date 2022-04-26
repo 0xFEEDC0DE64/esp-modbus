@@ -38,7 +38,7 @@ static void modbus_slave_task(void *pvParameters)
                                                 portMAX_DELAY);
         // Check if stack started then poll for data
         if (status & MB_EVENT_STACK_STARTED) {
-            (void)eMBPoll(); // allow stack to process data
+            (void)eMBPoll(portMAX_DELAY); // allow stack to process data
             // Send response buffer
             BOOL xSentState = xMBPortSerialTxPoll();
             if (xSentState) {
@@ -158,7 +158,8 @@ static esp_err_t mbc_serial_slave_destroy(void)
     // Disable and then destroy the Modbus stack
     mb_error = eMBDisable();
     MB_SLAVE_CHECK((mb_error == MB_ENOERR), ESP_ERR_INVALID_STATE, "mb stack disable failure.");
-    (void)vTaskDelete(mbs_opts->mbs_task_handle);
+    if (mbs_opts->mbs_task_handle)
+        (void)vTaskDelete(mbs_opts->mbs_task_handle);
     (void)vQueueDelete(mbs_opts->mbs_notification_queue_handle);
     (void)vEventGroupDelete(mbs_opts->mbs_event_group);
     mb_error = eMBClose();
@@ -170,7 +171,7 @@ static esp_err_t mbc_serial_slave_destroy(void)
 }
 
 // Initialization of Modbus controller
-esp_err_t mbc_serial_slave_create(void** handler)
+esp_err_t mbc_serial_slave_create(void** handler, bool start_controller_task)
 {
     // Allocate space for options
     if (mbs_interface_ptr == NULL) {
@@ -202,21 +203,28 @@ esp_err_t mbc_serial_slave_create(void** handler)
                                                 sizeof(mb_param_info_t));
     MB_SLAVE_CHECK((mbs_opts->mbs_notification_queue_handle != NULL),
             ESP_ERR_NO_MEM, "mb notify queue creation error.");
-    // Create Modbus controller task
-    status = xTaskCreatePinnedToCore((void*)&modbus_slave_task,
-                            "modbus_slave_task",
-                            MB_CONTROLLER_STACK_SIZE,
-                            NULL,
-                            MB_CONTROLLER_PRIORITY,
-                            &mbs_opts->mbs_task_handle,
-                            MB_PORT_TASK_AFFINITY);
-    if (status != pdPASS) {
-        vTaskDelete(mbs_opts->mbs_task_handle);
-        MB_SLAVE_CHECK((status == pdPASS), ESP_ERR_NO_MEM,
-                "mb controller task creation error, xTaskCreate() returns (0x%x).",
-                (uint32_t)status);
+    if (start_controller_task)
+    {
+        // Create Modbus controller task
+        status = xTaskCreatePinnedToCore((void*)&modbus_slave_task,
+                                "modbus_slave_task",
+                                MB_CONTROLLER_STACK_SIZE,
+                                NULL,
+                                MB_CONTROLLER_PRIORITY,
+                                &mbs_opts->mbs_task_handle,
+                                MB_PORT_TASK_AFFINITY);
+        if (status != pdPASS) {
+            vTaskDelete(mbs_opts->mbs_task_handle);
+            MB_SLAVE_CHECK((status == pdPASS), ESP_ERR_NO_MEM,
+                    "mb controller task creation error, xTaskCreate() returns (0x%x).",
+                    (uint32_t)status);
+        }
+
+        // The task is created but handle is incorrect
+        MB_SLAVE_ASSERT(mbs_opts->mbs_task_handle != NULL);
     }
-    MB_SLAVE_ASSERT(mbs_opts->mbs_task_handle != NULL); // The task is created but handle is incorrect
+    else
+        mbs_opts->mbs_task_handle = false;
 
     // Initialize interface function pointers
     mbs_interface_ptr->check_event = mbc_serial_slave_check_event;
@@ -228,12 +236,12 @@ esp_err_t mbc_serial_slave_create(void** handler)
     mbs_interface_ptr->start = mbc_serial_slave_start;
 
     // Initialize stack callback function pointers
-    mbs_interface_ptr->slave_reg_cb_discrete = NULL; // implemented in common layer
-    mbs_interface_ptr->slave_reg_cb_input = NULL;
-    mbs_interface_ptr->slave_reg_cb_holding = NULL;
-    mbs_interface_ptr->slave_reg_cb_coils = NULL;
+    mbs_interface_ptr->slave_reg_cb_discrete = mbc_reg_discrete_slave_cb;
+    mbs_interface_ptr->slave_reg_cb_input = mbc_reg_input_slave_cb;
+    mbs_interface_ptr->slave_reg_cb_holding = mbc_reg_holding_slave_cb;
+    mbs_interface_ptr->slave_reg_cb_coils = mbc_reg_coils_slave_cb;
 
-    *handler = (void*)mbs_interface_ptr;
+    *handler = mbs_interface_ptr;
 
     return ESP_OK;
 }
