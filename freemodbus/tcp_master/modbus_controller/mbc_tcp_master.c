@@ -120,7 +120,7 @@ static esp_err_t mbc_tcp_master_setup(void* comm_info)
     const mb_communication_info_t* comm_info_ptr = (mb_communication_info_t*)comm_info;
     // Check communication options
     MB_MASTER_CHECK((comm_info_ptr->ip_mode == MB_MODE_TCP),
-                ESP_ERR_INVALID_ARG, "mb incorrect mode = (0x%x).",
+                ESP_ERR_INVALID_ARG, "mb incorrect mode = (0x%" PRIu32 "x).",
                 (uint32_t)comm_info_ptr->ip_mode);
     MB_MASTER_CHECK((comm_info_ptr->ip_addr != NULL),
                     ESP_ERR_INVALID_ARG, "mb wrong slave ip address table.");
@@ -159,7 +159,7 @@ static esp_err_t mbc_tcp_master_start(void)
 
     status = eMBMasterEnable();
     MB_MASTER_CHECK((status == MB_ENOERR), ESP_ERR_INVALID_STATE,
-                    "mb stack set slave ID failure, eMBMasterEnable() returned (0x%x).", (uint32_t)status);
+                    "mb stack set slave ID failure, eMBMasterEnable() returned (0x%" PRIu32 "x).", (uint32_t)status);
 
     // Add slave IP address for each slave to initialize connection
     mb_slave_addr_entry_t *p_slave_info;
@@ -200,7 +200,7 @@ static esp_err_t mbc_tcp_master_destroy(void)
 
     mb_error = eMBMasterClose();
     MB_MASTER_CHECK((mb_error == MB_ENOERR), ESP_ERR_INVALID_STATE,
-                    "mb stack close failure returned (0x%x).", (uint32_t)mb_error);
+                    "mb stack close failure returned (0x%" PRIu32 "x).", (uint32_t)mb_error);
     // Stop polling by clearing correspondent bit in the event group
     xEventGroupClearBits(mbm_opts->mbm_event_group,
                          (EventBits_t)MB_EVENT_STACK_STARTED);
@@ -792,7 +792,7 @@ esp_err_t mbc_tcp_master_create(void** handler, bool start_controller_task)
         if (status != pdPASS) {
             vTaskDelete(mbm_opts->mbm_task_handle);
             MB_MASTER_CHECK((status == pdPASS), ESP_ERR_NO_MEM,
-                            "mb controller task creation error, xTaskCreate() returns (0x%x).",
+                            "mb controller task creation error, xTaskCreate() returns (0x%" PRIu32 "x).",
                             (uint32_t)status);
         }
         else
